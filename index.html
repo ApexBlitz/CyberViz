@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Tableau de Bord Avancé de Cybersécurité</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f4f4f4;
+    }
+    #dashboard {
+      display: flex;
+      height: 100vh;
+    }
+    #sidebar {
+      width: 250px;
+      background-color: #2c3e50;
+      color: white;
+      padding: 20px;
+      box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    }
+    #sidebar h1 {
+      text-align: center;
+      color: #ecf0f1;
+      font-size: 1.5em;
+    }
+    #sidebar-menu {
+      list-style-type: none;
+      padding: 0;
+    }
+    #sidebar-menu li {
+      padding: 10px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      border-radius: 5px;
+      margin-bottom: 5px;
+    }
+    #sidebar-menu li:hover {
+      background-color: #34495e;
+    }
+    #sidebar-menu li.active {
+      background-color: #3498db;
+    }
+    #content {
+      flex-grow: 1;
+      padding: 20px;
+      overflow-y: auto;
+      background-color: #ecf0f1;
+    }
+    .chart-container {
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+      position: relative;
+    }
+    .tooltip {
+      position: absolute;
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      pointer-events: none;
+      max-width: 250px;
+    }
+    .correlation-cell {
+      stroke: white;
+      stroke-width: 1px;
+    }
+  </style>
+</head>
+<body>
+  <div id="dashboard">
+    <div id="sidebar">
+      <h1>🔒 Cybersécurité</h1>
+      <ul id="sidebar-menu">
+        <li data-view="global-overview">Vue Globale</li>
+        <li data-view="regional-analysis">Analyse Régionale</li>
+        <li data-view="correlation-matrix">Matrice de Corrélation</li>
+        <li data-view="risk-heatmap">Heatmap des Risques</li>
+        <li data-view="market-comparison">Comparaison de Marché</li>
+        <li data-view="scatter-cei-ddl">Dispersion CEI vs DDL</li>
+        <li data-view="bar-region">Pays par Région</li>
+        <li data-view="pie-region">Répartition par Région</li>
+        <li data-view="boxplot-cei">Box Plot CEI par Région</li>
+        <li data-view="radar-region">Radar des Indices</li>
+        <li data-view="histogram-gci">Histogramme du GCI</li>
+        <li data-view="treemap-risk">Treemap des Risques</li>
+      </ul>
+    </div>
+    <div id="content">
+      <div id="global-overview" class="chart-container" style="display:none;">
+        <h2>Vue d'Ensemble Mondiale</h2>
+        <div id="global-chart"></div>
+      </div>
+      <div id="regional-analysis" class="chart-container" style="display:none;">
+        <h2>Analyse Régionale des Indices de Cybersécurité</h2>
+        <div id="regional-chart"></div>
+      </div>
+      <div id="correlation-matrix" class="chart-container" style="display:none;">
+        <h2>Matrice de Corrélation des Indices</h2>
+        <div id="correlation-chart"></div>
+      </div>
+      <div id="risk-heatmap" class="chart-container" style="display:none;">
+        <h2>Heatmap des Risques Cyber par Région</h2>
+        <div id="heatmap-chart"></div>
+      </div>
+      <div id="market-comparison" class="chart-container" style="display:none;">
+        <h2>Comparaison des Marchés Cyber</h2>
+        <div id="market-chart"></div>
+      </div>
+      <div id="scatter-cei-ddl" class="chart-container" style="display:none;">
+        <h2>Diagramme de Dispersion : CEI vs DDL</h2>
+        <div id="scatter-chart"></div>
+      </div>
+      <div id="bar-region" class="chart-container" style="display:none;">
+        <h2>Nombre de Pays par Région</h2>
+        <div id="bar-chart"></div>
+      </div>
+      <div id="pie-region" class="chart-container" style="display:none;">
+        <h2>Répartition des Pays par Région</h2>
+        <div id="pie-chart"></div>
+      </div>
+      <div id="boxplot-cei" class="chart-container" style="display:none;">
+        <h2>Box Plot du CEI par Région</h2>
+        <div id="boxplot-chart"></div>
+      </div>
+      <div id="radar-region" class="chart-container" style="display:none;">
+        <h2>Radar des Indices Moyens par Région</h2>
+        <div id="radar-chart"></div>
+      </div>
+      <div id="histogram-gci" class="chart-container" style="display:none;">
+        <h2>Histogramme du GCI</h2>
+        <div id="histogram-chart"></div>
+      </div>
+      <div id="treemap-risk" class="chart-container" style="display:none;">
+        <h2>Treemap des Risques par Région</h2>
+        <div id="treemap-chart"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Variable globale pour stocker les données
+    let globalData = [];
+
+    // Fonction utilitaire pour effacer les SVG précédents
+    function clearChart(containerId) {
+      d3.select(containerId).selectAll("svg").remove();
+    }
+
+    // Charger les données CSV
+    d3.csv("Cyber_security.csv").then(function(data) {
+      // Conversion des données numériques
+      globalData = data.map(d => ({
+        Country: d.Country,
+        Region: d.Region,
+        CEI: +d.CEI,
+        GCI: +d.GCI,
+        NCSI: +d.NCSI,
+        DDL: +d.DDL
+      }));
+
+      // Gestion du menu
+      document.getElementById('sidebar-menu').addEventListener('click', function(e) {
+        if (e.target.tagName === 'LI') {
+          // Masquer tous les contenus
+          ['#global-overview','#regional-analysis','#correlation-matrix', 
+           '#risk-heatmap','#market-comparison','#scatter-cei-ddl','#bar-region',
+           '#pie-region','#boxplot-cei','#radar-region','#histogram-gci','#treemap-risk']
+          .forEach(id => document.querySelector(id).style.display = 'none');
+
+          // Réinitialiser le style du menu
+          document.querySelectorAll('#sidebar-menu li').forEach(li => li.classList.remove('active'));
+
+          // Afficher la vue sélectionnée
+          const viewId = e.target.getAttribute('data-view');
+          document.getElementById(viewId).style.display = 'block';
+          e.target.classList.add('active');
+
+          // Appeler la fonction de création correspondante
+          switch(viewId) {
+            case 'global-overview': 
+              clearChart("#global-chart");
+              createGlobalOverview(); 
+              break;
+            case 'regional-analysis': 
+              clearChart("#regional-chart");
+              createRegionalAnalysis(); 
+              break;
+            case 'correlation-matrix': 
+              clearChart("#correlation-chart");
+              createCorrelationMatrix(); 
+              break;
+            case 'risk-heatmap': 
+              clearChart("#heatmap-chart");
+              createRiskHeatmap(); 
+              break;
+            case 'market-comparison': 
+              clearChart("#market-chart");
+              createMarketComparison(); 
+              break;
+            case 'scatter-cei-ddl': 
+              clearChart("#scatter-chart");
+              createScatterChart();
+              break;
+            case 'bar-region': 
+              clearChart("#bar-chart");
+              createBarRegionChart();
+              break;
+            case 'pie-region': 
+              clearChart("#pie-chart");
+              createPieRegionChart();
+              break;
+            case 'boxplot-cei': 
+              clearChart("#boxplot-chart");
+              createBoxPlotChart();
+              break;
+            case 'radar-region': 
+              clearChart("#radar-chart");
+              createRadarChart();
+              break;
+            case 'histogram-gci': 
+              clearChart("#histogram-chart");
+              createHistogramChart();
+              break;
+            case 'treemap-risk': 
+              clearChart("#treemap-chart");
+              createTreemapChart();
+              break;
+          }
+        }
+      });
+
+      // Charger la première vue par défaut
+      document.querySelector('#sidebar-menu li[data-view="global-overview"]').click();
+    }).catch(function(error) {
+      console.error("Erreur lors du chargement des données :", error);
+    });
+
+    // ----------------- Visualisations Existantes -----------------
+
+    // Vue Globale
+    function createGlobalOverview() {
+      const svg = d3.select("#global-chart")
+        .append("svg")
+        .attr("width", 800)
+        .attr("height", 500);
+
+      // Moyennes par région
+      const regionalMeans = d3.rollups(
+        globalData, 
+        v => ({
+          avgCEI: d3.mean(v, d => d.CEI),
+          avgGCI: d3.mean(v, d => d.GCI),
+          avgNCSI: d3.mean(v, d => d.NCSI),
+          avgDDL: d3.mean(v, d => d.DDL)
+        }),
+        d => d.Region
+      );
+
+      const x = d3.scaleBand()
+        .domain(regionalMeans.map(d => d[0]))
+        .range([50, 750])
+        .padding(0.1);
+
+      const y = d3.scaleLinear()
+        .domain([0, 100])
+        .range([450, 50]);
+
+      const indices = [
+        { key: 'avgCEI', color: 'steelblue' },
+        { key: 'avgGCI', color: 'green' },
+        { key: 'avgNCSI', color: 'orange' },
+        { key: 'avgDDL', color: 'red' }
+      ];
+
+      indices.forEach((index, i) => {
+        svg.selectAll(`.${index.key}-bar`)
+          .data(regionalMeans)
+          .enter()
+          .append("rect")
+          .attr("x", d => x(d[0]) + i * x.bandwidth() / 4)
+          .attr("y", d => y(d[1][index.key]))
+          .attr("width", x.bandwidth() / 4)
+          .attr("height", d => 450 - y(d[1][index.key]))
+          .attr("fill", index.color);
+      });
+
+      svg.append("g")
+        .attr("transform", "translate(0,450)")
+        .call(d3.axisBottom(x));
+
+      svg.append("g")
+        .attr("transform", "translate(50,0)")
+        .call(d3.axisLeft(y));
+
+      const legend = svg.append("g")
+        .attr("transform", "translate(600,50)");
+
+      indices.forEach((index, i) => {
+        legend.append("rect")
+          .attr("x", 0)
+          .attr("y", i * 20)
+          .attr("width", 10)
+          .attr("height", 10)
+          .attr("fill", index.color);
+        legend.append("text")
+          .attr("x", 15)
+          .attr("y", i * 20 + 10)
+          .text(index.key.replace('avg', ''));
+      });
+    }
+
+    // Analyse Régionale
+    function createRegionalAnalysis() {
+      const regionalData = d3.rollups(
+        globalData, 
+        v => ({
+          countries: v.length,
+          avgCEI: d3.mean(v, d => d.CEI),
+          avgGCI: d3.mean(v, d => d.GCI),
+          avgNCSI: d3.mean(v, d => d.NCSI),
+          avgDDL: d3.mean(v, d => d.DDL)
+        }),
+        d => d.Region
+      );
+
+      const svg = d3.select("#regional-chart")
+        .append("svg")
+        .attr("width", 800)
+        .attr("height", 500);
+
+      const x = d3.scaleBand()
+        .domain(regionalData.map(d => d[0]))
+        .range([50, 750])
+        .padding(0.1);
+
+      const y = d3.scaleLinear()
+        .domain([0, d3.max(regionalData, d => d[1].avgNCSI)])
+        .range([450, 50]);
+
+      svg.selectAll(".regional-bubble")
+        .data(regionalData)
+        .enter()
+        .append("circle")
+        .attr("cx", d => x(d[0]) + x.bandwidth() / 2)
+        .attr("cy", d => y(d[1].avgNCSI))
+        .attr("r", d => Math.sqrt(d[1].countries) * 5)
+        .attr("fill", d => d3.interpolateBlues(d[1].avgNCSI / 100))
+        .attr("opacity", 0.7);
+
+      svg.append("g")
+        .attr("transform", "translate(0,450)")
+        .call(d3.axisBottom(x));
+
+      svg.append("g")
+        .attr("transform", "translate(50,0)")
+        .call(d3.axisLeft(y));
+
+      svg.selectAll(".region-label")
+        .data(regionalData)
+        .enter()
+        .append("text")
+        .attr("x", d => x(d[0]) + x.bandwidth() / 2)
+        .attr("y", d => y(d[1].avgNCSI))
+        .attr("text-anchor", "middle")
+        .attr("dy", 4)
+        .text(d => `${d[0]}\n${d[1].countries} pays`)
+        .attr("font-size", "10px")
+        .attr("fill", "white");
+    }
+
+    // Matrice de Corrélation
+    function createCorrelationMatrix() {
+      const indices = ['CEI', 'GCI', 'NCSI', 'DDL'];
+      const correlationData = indices.map(indexA => 
+        indices.map(indexB => {
+          const correlation = d3.mean(globalData, d => 
+            (d[indexA] - d3.mean(globalData, d => d[indexA])) * 
+            (d[indexB] - d3.mean(globalData, d => d[indexB]))
+          ) / (
+            d3.deviation(globalData, d => d[indexA]) * 
+            d3.deviation(globalData, d => d[indexB])
+          );
+          return correlation;
+        })
+      );
+
+      const svg = d3.select("#correlation-chart")
+        .append("svg")
+        .attr("width", 500)
+        .attr("height", 500);
+
+      const cellSize = 100;
+      const colorScale = d3.scaleSequential(d3.interpolateRdBu)
+        .domain([-1, 1]);
+
+      svg.selectAll(".correlation-cell")
+        .data(correlationData.flatMap((row, i) => 
+          row.map((value, j) => ({ value, i, j }))
+        ))
+        .enter()
+        .append("rect")
+        .attr("x", d => d.j * cellSize)
+        .attr("y", d => d.i * cellSize)
+        .attr("width", cellSize)
+        .attr("height", cellSize)
+        .attr("fill", d => colorScale(d.value))
+        .attr("class", "correlation-cell")
+        .append("title")
+        .text(d => `Corrélation: ${d.value.toFixed(2)}`);
+
+      svg.selectAll(".index-label")
+        .data(indices)
+        .enter()
+        .append("text")
+        .attr("x", (d, i) => i * cellSize + cellSize / 2)
+        .attr("y", 490)
+        .attr("text-anchor", "middle")
+        .text(d => d);
+
+      svg.selectAll(".index-label-vertical")
+        .data(indices)
+        .enter()
+        .append("text")
+        .attr("x", 10)
+        .attr("y", (d, i) => i * cellSize + cellSize / 2)
+        .attr("text-anchor", "middle")
+        .attr("transform", (d, i) => `rotate(-90, 10, ${i * cellSize + cellSize / 2})`)
+        .text(d => d);
+    }
+
+    // Heatmap des Risques
+    function createRiskHeatmap() {
+      const svg = d3.select("#heatmap-chart")
+        .append("svg")
+        .attr("width", 800)
+        .attr("height", 500);
+
+      const riskData = globalData.map(d => ({
+        Country: d.Country,
+        Region: d.Region,
+        RiskScore: (100 - d.CEI + 100 - d.GCI + 100 - d.NCSI + d.DDL) / 4
+      }));
+
+      const x = d3.scaleBand()
+        .domain(riskData.map(d => d.Region))
+        .range([50, 750])
+        .padding(0.1);
+
+      const y = d3.scaleBand()
+        .domain(riskData.map(d => d.Country))
+        .range([450, 50])
+        .padding(0.1);
+
+      const colorScale = d3.scaleSequential(d3.interpolateReds)
+        .domain([0, 100]);
+
+      svg.selectAll(".risk-cell")
+        .data(riskData)
+        .enter()
+        .append("rect")
+        .attr("x", d => x(d.Region))
+        .attr("y", d => y(d.Country))
+        .attr("width", x.bandwidth())
+        .attr("height", y.bandwidth())
+        .attr("fill", d => colorScale(d.RiskScore))
+        .append("title")
+        .text(d => `${d.Country} (${d.Region})\nRisque: ${d.RiskScore.toFixed(2)}`);
+
+      svg.append("g")
+        .attr("transform", "translate(0,450)")
+        .call(d3.axisBottom(x));
+
+      svg.append("g")
+        .attr("transform", "translate(50,0)")
+        .call(d3.axisLeft(y));
+    }
+
+    // Comparaison de Marché
+    function createMarketComparison() {
+      const svg = d3.select("#market-chart")
+        .append("svg")
+        .attr("width", 800)
+        .attr("height", 500);
+
+      const regionalMarketData = d3.rollups(
+        globalData, 
+        v => ({
+          totalCEI: d3.sum(v, d => d.CEI),
+          totalGCI: d3.sum(v, d => d.GCI),
+          avgDDL: d3.mean(v, d => d.DDL)
+        }),
+        d => d.Region
+      );
+
+      const x = d3.scaleBand()
+        .domain(regionalMarketData.map(d => d[0]))
+        .range([50, 750])
+        .padding(0.1);
+
+      const y = d3.scaleLinear()
+        .domain([0, d3.max(regionalMarketData, d => d[1].totalCEI)])
+        .range([450, 50]);
+
+      regionalMarketData.forEach(region => {
+        const g = svg.append("g")
+          .attr("transform", `translate(${x(region[0])},0)`);
+
+        g.append("rect")
+          .attr("x", 0)
+          .attr("y", y(region[1].totalCEI))
+          .attr("width", x.bandwidth() / 3)
+          .attr("height", 450 - y(region[1].totalCEI))
+          .attr("fill", "steelblue");
+
+        g.append("rect")
+          .attr("x", x.bandwidth() / 3)
+          .attr("y", y(region[1].totalGCI))
+          .attr("width", x.bandwidth() / 3)
+          .attr("height", 450 - y(region[1].totalGCI))
+          .attr("fill", "green");
+
+        g.append("rect")
+          .attr("x", 2 * x.bandwidth() / 3)
+          .attr("y", y(region[1].avgDDL * 10))
+          .attr("width", x.bandwidth() / 3)
+          .attr("height", 450 - y(region[1].avgDDL * 10))
+          .attr("fill", "orange");
+      });
+
+      svg.append("g")
+        .attr("transform", "translate(0,450)")
+        .call(d3.axisBottom(x));
+
+      svg.append("g")
+        .attr("transform", "translate(50,0)")
+        .call(d3.axisLeft(y));
+
+      const legend = svg.append("g")
+        .attr("transform", "translate(600,50)");
+
+      [
+        { label: "Taille du Marché (CEI)", color: "steelblue" },
+        { label: "Indice Global", color: "green" },
+        { label: "Développement Légal", color: "orange" }
+      ].forEach((item, i) => {
+        legend.append("rect")
+          .attr("x", 0)
+          .attr("y", i * 20)
+          .attr("width", 10)
+          .attr("height", 10)
+          .attr("fill", item.color);
+        legend.append("text")
+          .attr("x", 15)
+          .attr("y", i * 20 + 10)
+          .text(item.label);
+      });
+    }
+
+    // Diagramme de dispersion : CEI vs DDL
+    function createScatterChart() {
+      const svg = d3.select("#scatter-chart")
+        .append("svg")
+        .attr("width", 800)
+        .attr("height", 500);
+
+      const margin = {top: 50, right: 50, bottom: 50, left: 50};
+      const width = 800 - margin.left - margin.right;
+      const height = 500 - margin.top - margin.bottom;
+
+      const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+      const x = d3.scaleLinear()
+        .domain([0, d3.max(globalData, d => d.CEI)])
+        .range([0, width]);
+
+      const y = d3.scaleLinear()
+        .domain([0, d3.max(globalData, d => d.DDL)])
+        .range([height, 0]);
+
+      g.append("g")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x));
+      g.append("g")
+        .call(d3.axisLeft(y));
+
+      g.selectAll("circle")
+        .data(globalData)
+        .enter()
+        .append("circle")
+        .attr("cx", d => x(d.CEI))
+        .attr("cy", d => y(d.DDL))
+        .attr("r", 5)
+        .attr("fill", "purple")
+        .attr("opacity", 0.7)
+        .append("title")
+        .text(d => `${d.Country}\nCEI: ${d.CEI}\nDDL: ${d.DDL}`);
+      
+      svg.append("text")
+        .attr("x", width/2 + margin.left)
+        .attr("y", margin.top/2)
+        .attr("text-anchor", "middle")
+        .style("font-size", "16px")
+        .text("Dispersion CEI vs DDL");
+    }
+
+    // Diagramme en barres horizontales : Nombre de pays par région
+    function createBarRegionChart() {
+      const svg = d3.select("#bar-chart")
+        .append("svg")
+        .attr("width", 800)
+        .attr("height", 500);
+
+      const regionCounts = d3.rollups(globalData, v => v.length, d => d.Region)
+                            .map(d => ({ Region: d[0], Count: d[1] }));
+
+      const margin = {top: 50, right: 50, bottom: 50, left: 150};
+      const width = 800 - margin.left - margin.right;
+      const height = 500 - margin.top - margin.bottom;
+
+      const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+      const y = d3.scaleBand()
+        .domain(regionCounts.map(d => d.Region))
+        .range([0, height])
+        .padding(0.1);
+
+      const x = d3.scaleLinear()
+        .domain([0, d3.max(regionCounts, d => d.Count)])
+        .range([0, width]);
+
+      g.selectAll("rect")
+        .data(regionCounts)
+        .enter()
+        .append("rect")
+        .attr("y", d => y(d.Region))
+        .attr("x", 0)
+        .attr("height", y.bandwidth())
+        .attr("width", d => x(d.Count))
+        .attr("fill", "teal")
+        .append("title")
+        .text(d => `${d.Region} : ${d.Count} pays`);
+
+      g.append("g")
+        .call(d3.axisLeft(y));
+      g.append("g")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x));
+      
+      svg.append("text")
+        .attr("x", width/2 + margin.left)
+        .attr("y", margin.top/2)
+        .attr("text-anchor", "middle")
+        .style("font-size", "16px")
+        .text("Nombre de Pays par Région");
+    }
+
+    // Diagramme circulaire : Répartition des pays par région
+    function createPieRegionChart() {
+      const svg = d3.select("#pie-chart")
+        .append("svg")
+        .attr("width", 500)
+        .attr("height", 500)
+        .append("g")
+        .attr("transform", "translate(250,250)");
+
+      const regionCounts = d3.rollups(globalData, v => v.length, d => d.Region)
+                            .map(d => ({ Region: d[0], Count: d[1] }));
+      
+      const radius = 200;
+      const color = d3.scaleOrdinal()
+        .domain(regionCounts.map(d => d.Region))
+        .range(d3.schemeCategory10);
+
+      const pie = d3.pie()
+        .value(d => d.Count);
+
+      const data_ready = pie(regionCounts);
+
+      const arc = d3.arc()
+        .innerRadius(0)
+        .outerRadius(radius);
+
+      svg.selectAll("slice")
+        .data(data_ready)
+        .enter()
+        .append("path")
+        .attr("d", arc)
+        .attr("fill", d => color(d.data.Region))
+        .attr("stroke", "white")
+        .style("stroke-width", "2px")
+        .append("title")
+        .text(d => `${d.data.Region} : ${d.data.Count} pays`);
+
+      const legend = svg.append("g")
+        .attr("transform", "translate(-220,-220)");
+
+      regionCounts.forEach((d, i) => {
+        legend.append("rect")
+          .attr("x", 0)
+          .attr("y", i * 20)
+          .attr("width", 10)
+          .attr("height", 10)
+          .attr("fill", color(d.Region));
+        legend.append("text")
+          .attr("x", 15)
+          .attr("y", i * 20 + 10)
+          .text(d.Region)
+          .style("font-size", "12px");
+      });
+    }
+
+    // ----------------- Visualisations Supplémentaires -----------------
+
+    // 1. Diagramme en boîte (Box Plot) du CEI par Région
+    function createBoxPlotChart() {
+      const svg = d3.select("#boxplot-chart")
+        .append("svg")
+        .attr("width", 800)
+        .attr("height", 500);
+
+      // Grouper les données par région
+      const dataByRegion = d3.group(globalData, d => d.Region);
+      const regions = Array.from(dataByRegion.keys());
+      
+      // Calcul des statistiques pour chaque région
+      const stats = regions.map(region => {
+        const values = dataByRegion.get(region).map(d => d.CEI).sort(d3.ascending);
+        const q1 = d3.quantile(values, 0.25);
+        const median = d3.quantile(values, 0.5);
+        const q3 = d3.quantile(values, 0.75);
+        const min = d3.min(values);
+        const max = d3.max(values);
+        return { region, min, q1, median, q3, max };
+      });
+
+      const margin = {top: 50, right: 50, bottom: 50, left: 100};
+      const width = 800 - margin.left - margin.right;
+      const height = 500 - margin.top - margin.bottom;
+
+      const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+      const x = d3.scaleBand()
+        .domain(regions)
+        .range([0, width])
+        .padding(0.3);
+
+      const y = d3.scaleLinear()
+        .domain([0, d3.max(stats, d => d.max)])
+        .range([height, 0]);
+
+      // Axes
+      g.append("g")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x));
+      g.append("g")
+        .call(d3.axisLeft(y));
+
+      // Boîtes
+      g.selectAll("rect")
+        .data(stats)
+        .enter()
+        .append("rect")
+        .attr("x", d => x(d.region))
+        .attr("y", d => y(d.q3))
+        .attr("width", x.bandwidth())
+        .attr("height", d => y(d.q1) - y(d.q3))
+        .attr("fill", "#8da0cb")
+        .attr("stroke", "black");
+
+      // Médianes
+      g.selectAll("line.median")
+        .data(stats)
+        .enter()
+        .append("line")
+        .attr("class", "median")
+        .attr("x1", d => x(d.region))
+        .attr("x2", d => x(d.region) + x.bandwidth())
+        .attr("y1", d => y(d.median))
+        .attr("y2", d => y(d.median))
+        .attr("stroke", "black");
+
+      // Moustaches
+      g.selectAll("line.whiskerTop")
+        .data(stats)
+        .enter()
+        .append("line")
+        .attr("x1", d => x(d.region) + x.bandwidth()/2)
+        .attr("x2", d => x(d.region) + x.bandwidth()/2)
+        .attr("y1", d => y(d.max))
+        .attr("y2", d => y(d.q3))
+        .attr("stroke", "black");
+
+      g.selectAll("line.whiskerBottom")
+        .data(stats)
+        .enter()
+        .append("line")
+        .attr("x1", d => x(d.region) + x.bandwidth()/2)
+        .attr("x2", d => x(d.region) + x.bandwidth()/2)
+        .attr("y1", d => y(d.min))
+        .attr("y2", d => y(d.q1))
+        .attr("stroke", "black");
+    }
+
+    // 2. Graphique Radar des indices moyens par région
+    function createRadarChart() {
+      // Calculer les moyennes par région pour chaque indice
+      const regionalMeans = d3.rollups(
+        globalData, 
+        v => ({
+          CEI: d3.mean(v, d => d.CEI),
+          GCI: d3.mean(v, d => d.GCI),
+          NCSI: d3.mean(v, d => d.NCSI),
+          DDL: d3.mean(v, d => d.DDL)
+        }),
+        d => d.Region
+      );
+
+      // Convertir les données pour le radar
+      const radarData = regionalMeans.map(d => ({
+        region: d[0],
+        axes: [
+          { axis: "CEI", value: d[1].CEI },
+          { axis: "GCI", value: d[1].GCI },
+          { axis: "NCSI", value: d[1].NCSI },
+          { axis: "DDL", value: d[1].DDL }
+        ]
+      }));
+
+      const width = 500, height = 500;
+      const radius = Math.min(width, height) / 2;
+      const levels = 5;
+      const angleSlice = Math.PI * 2 / 4; // 4 axes
+
+      const radarSvg = d3.select("#radar-chart")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height)
+        .append("g")
+        .attr("transform", `translate(${width/2},${height/2})`);
+
+      // Grilles circulaires
+      for (let level = 0; level < levels; level++) {
+        const r = radius * ((level + 1) / levels);
+        radarSvg.append("circle")
+          .attr("r", r)
+          .attr("fill", "none")
+          .attr("stroke", "#CDCDCD")
+          .attr("stroke-dasharray", "2,2");
+      }
+
+      // Axes radiales
+      const axisNames = ["CEI", "GCI", "NCSI", "DDL"];
+      axisNames.forEach((axis, i) => {
+        const angle = angleSlice * i - Math.PI / 2;
+        radarSvg.append("line")
+          .attr("x1", 0)
+          .attr("y1", 0)
+          .attr("x2", radius * Math.cos(angle))
+          .attr("y2", radius * Math.sin(angle))
+          .attr("stroke", "#CDCDCD");
+        radarSvg.append("text")
+          .attr("x", (radius + 10) * Math.cos(angle))
+          .attr("y", (radius + 10) * Math.sin(angle))
+          .attr("dy", "0.35em")
+          .style("font-size", "10px")
+          .text(axis);
+      });
+
+      // Tracer un radar par région
+      const radarLine = d3.lineRadial()
+        .radius(d => (d.value/100) * radius)
+        .angle((d, i) => i * angleSlice);
+
+      const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+
+      radarData.forEach((d, i) => {
+        radarSvg.append("path")
+          .datum(d.axes)
+          .attr("d", radarLine)
+          .attr("fill", colorScale(i))
+          .attr("fill-opacity", 0.1)
+          .attr("stroke", colorScale(i))
+          .attr("stroke-width", 2)
+          .append("title")
+          .text(d.region);
+      });
+    }
+
+    // 3. Histogramme du GCI
+    function createHistogramChart() {
+      const svg = d3.select("#histogram-chart")
+        .append("svg")
+        .attr("width", 800)
+        .attr("height", 500);
+
+      const margin = {top: 50, right: 50, bottom: 50, left: 50};
+      const width = 800 - margin.left - margin.right;
+      const height = 500 - margin.top - margin.bottom;
+
+      const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+      const values = globalData.map(d => d.GCI);
+      const x = d3.scaleLinear()
+        .domain([d3.min(values), d3.max(values)])
+        .range([0, width]);
+
+      const histogram = d3.histogram()
+        .domain(x.domain())
+        .thresholds(x.ticks(20));
+
+      const bins = histogram(values);
+
+      const y = d3.scaleLinear()
+        .domain([0, d3.max(bins, d => d.length)])
+        .range([height, 0]);
+
+      g.selectAll("rect")
+        .data(bins)
+        .enter()
+        .append("rect")
+        .attr("x", d => x(d.x0))
+        .attr("y", d => y(d.length))
+        .attr("width", d => x(d.x1) - x(d.x0) - 1)
+        .attr("height", d => height - y(d.length))
+        .attr("fill", "coral");
+
+      g.append("g")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x));
+      g.append("g")
+        .call(d3.axisLeft(y));
+
+      svg.append("text")
+        .attr("x", width/2 + margin.left)
+        .attr("y", margin.top/2)
+        .attr("text-anchor", "middle")
+        .style("font-size", "16px")
+        .text("Histogramme du GCI");
+    }
+
+    // 4. Treemap des Risques par Région
+    function createTreemapChart() {
+      const width = 800, height = 500;
+      const svg = d3.select("#treemap-chart")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height);
+
+      // Agréger le score de risque par région
+      const riskByRegion = d3.rollups(
+        globalData,
+        v => d3.sum(v, d => (100 - d.CEI + 100 - d.GCI + 100 - d.NCSI + d.DDL)/4),
+        d => d.Region
+      ).map(d => ({ Region: d[0], RiskTotal: d[1] }));
+
+      const root = d3.hierarchy({ values: riskByRegion }, d => d.values)
+        .sum(d => d.RiskTotal);
+
+      d3.treemap()
+        .size([width, height])
+        .padding(2)
+        (root);
+
+      const color = d3.scaleOrdinal()
+        .domain(riskByRegion.map(d => d.Region))
+        .range(d3.schemePaired);
+
+      svg.selectAll("rect")
+        .data(root.leaves())
+        .enter()
+        .append("rect")
+        .attr("x", d => d.x0)
+        .attr("y", d => d.y0)
+        .attr("width", d => d.x1 - d.x0)
+        .attr("height", d => d.y1 - d.y0)
+        .attr("fill", d => color(d.data.Region))
+        .append("title")
+        .text(d => `${d.data.Region} : ${d.data.RiskTotal.toFixed(2)}`);
+
+      svg.selectAll("text")
+        .data(root.leaves())
+        .enter()
+        .append("text")
+        .attr("x", d => d.x0 + 5)
+        .attr("y", d => d.y0 + 20)
+        .text(d => d.data.Region)
+        .attr("fill", "white")
+        .attr("font-size", "12px");
+    }
+  </script>
+</body>
+</html>
